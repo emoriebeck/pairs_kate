@@ -1,0 +1,88 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F, error = F)
+```
+
+
+# Workspace
+## Packages
+```{r packages}
+library(lavaan)
+library(psych)
+library(knitr)
+library(kableExtra)
+library(stringr)
+library(plyr)
+library(tidyverse)
+```
+
+## Data {.tabset}
+First, we set the path to the data.
+```{r data}
+data_path <- "~/Box Sync/network/other projects/Correlated Change"
+```
+
+### Trait Level: Target
+Now we get the 7 waves of trait level data. In the data file, the items were given an adjective descriptor rather than one that matched the trait and item number in the original BFI. So I create a data frame that does that so I can get this information easily.  
+```{r trait data}
+# make vectors of the original names of the data and the new names I'll give them for ease of use
+old_cols <- c("talkative", "findfault", "thorough", "depressed", "original", "reserved", "helpful",
+          "careless", "relaxed", "curious", "energy", "quarrels", "reliable", "tense", "ingenious",
+          "enthusiasm", "forgiving", "disorganized", "worries", "imagination", "quiet", "trusting",
+          "lazy", "emotionallystable", "inventive", "assertive", "cold", "perseveres", "moody", 
+          "artistic", "shy", "considerate", "efficient", "calm", "routine", "outgoing", "rude",
+          "plans", "nervous", "reflect", "unartistic", "cooperate", "distracted", "sophisticated")
+
+new_cols <- c(paste(rep(c("E", "A", "C", "N", "O"), times = 8), 
+              rep(seq(1,8,1), each = 5), sep = "_"), 
+              "O_9", "A_9", "C_9", "O_10")
+
+cols <- tibble(old = old_cols, new = new_cols)
+
+# load data and rename items to match the original BFI
+(trait_data <- sprintf("%s/data/sevenwaves.csv", data_path) %>% read.csv %>% tbl_df %>%
+  gather(key = item, value = value, outgoing1:sophisticated_d, na.rm = T) %>%
+  mutate(item = gsub("[_]", "", item)) %>%
+  separate(item, c("item", "wave"), -1) %>%
+  filter(!(item %in% c("connected", "likesothers"))) %>%
+  mutate(item = factor(mapvalues(item, from = old_cols, to = new_cols), levels = new_cols),
+         wave = mapvalues(wave, from = c("1", "a", "b", "2", "c", "d", "3"),
+                          to = paste("T", seq(1,7,1), sep = ""))) %>%
+  rename(SID = id) %>%
+  select(SID, wave, item, value) %>%
+  spread(key = item, value = value))
+
+
+####Clean Data
+# make keys list
+keys <- c( 1, -1,  1,  1,  1,-1,  1, -1, -1, 1, 
+           1, -1,  1,  1,  1, 1,  1, -1,  1, 1,
+          -1,  1, -1, -1,  1, 1, -1,  1,  1, 1,
+          -1,  1,  1, -1, -1, 1, -1,  1,  1, 1,
+          -1,  1, -1,  1)
+
+# reverse code responses
+trait_data[,c(3:46)] <- 
+  reverse.code(keys, trait_data[,c(3:46)],  mini = rep(1,44), maxi = rep(15,44))
+
+# create long format data frame
+(trait_data_long <- trait_data %>%
+  gather(key = item, value = value, E_1:O_10) %>%
+  separate(item, c("trait", "item"), sep = "_")) 
+
+(trait_data_comp <- trait_data_long %>%
+    group_by(SID, wave, trait) %>%
+    summarize(value = mean(value, na.rm = T)))
+
+# Make data wide for lavaan
+(trait_data_wide <- trait_data_long %>%
+  mutate(SID = as.character(SID)) %>%
+  unite(temp, wave, item) %>%
+  spread(key = temp, value = value))
+```
